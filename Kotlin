@@ -1,0 +1,581 @@
+package com.whattimeisit
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.*
+
+
+import android.content.Context
+import java.io.File
+import java.io.FileOutputStream
+
+
+
+
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.*
+import java.net.HttpURLConnection
+import java.net.URL
+
+import android.provider.ContactsContract
+
+import java.net.URLEncoder
+import android.net.Uri
+
+import android.widget.TextView
+import android.widget.Button
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+
+
+
+
+
+class MainActivity : Activity(), TextToSpeech.OnInitListener {
+
+private lateinit var tts: TextToSpeech
+private val SPEECH_REQUEST_CODE = 100
+var extractedData: String? = null  // Declare inside onStart
+var rules: String = "Minimize response. Act as voice assistant. Check \$extractedData for related info." 
+
+
+override fun onCreate(savedInstanceState: Bundle?) {
+super.onCreate(savedInstanceState)
+setContentView(R.layout.activity_main) // Load the layout
+
+
+
+// Initialize Text-to-Speech
+tts = TextToSpeech(this, this)
+
+// Start voice recognition immediately after activity is created
+startVoiceRecognition()
+
+
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+val readGranted = checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+val writeGranted = checkSelfPermission(Manifest.permission.WRITE_CONTACTS) == PackageManager.PERMISSION_GRANTED
+
+if (!readGranted || !writeGranted) {
+requestPermissions(arrayOf(
+Manifest.permission.READ_CONTACTS,
+Manifest.permission.WRITE_CONTACTS
+), 1)
+}
+}
+
+
+
+
+
+
+}
+
+
+override fun onStart() {
+    super.onStart()
+
+ 
+    Thread {
+        // Read from assets or your file
+        extractedData = readTextData(this)
+
+        // Speak 
+        println("data got")
+    }.start()
+	startVoiceRecognition()
+}
+
+
+// Text-to-Speech Initialization
+override fun onInit(status: Int) {
+if (status == TextToSpeech.SUCCESS) {
+tts.language = Locale.getDefault()
+}
+}
+
+// Function to tell time using Text-to-Speech
+private fun tellTime() {
+val currentTime = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date())
+val text = "The time is $currentTime"
+tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+}
+
+fun convertContractions(input: String): String {
+// Map of common contractions and their expanded forms
+val contractionsMap = mapOf(
+"i'm" to "I am",
+"you're" to "You are",
+"he's" to "He is / He has",
+"she's" to "She is / She has",
+"it's" to "It is / It has",
+"we're" to "We are",
+"they're" to "They are",
+"i've" to "I have",
+"you've" to "You have",
+"we've" to "We have",
+"they've" to "They have",
+"i'd" to "I would / I had",
+"you'd" to "You would / You had",
+"he'd" to "He would / He had",
+"she'd" to "She would / She had",
+"we'd" to "We would / We had",
+"they'd" to "They would / They had",
+"i'll" to "I will",
+"you'll" to "You will",
+"he'll" to "He will",
+"she'll" to "She will",
+"we'll" to "We will",
+"they'll" to "They will",
+"i'd've" to "I would have",
+"you'd've" to "You would have",
+"he'd've" to "He would have",
+"she'd've" to "She would have",
+"we'd've" to "We would have",
+"they'd've" to "They would have",
+"can't" to "Cannot",
+"won't" to "Will not",
+"doesn't" to "Does not",
+"didn't" to "Did not",
+"it's" to "It is / It has",
+"isn't" to "Is not",
+"aren't" to "Are not",
+"what's" to "what is"
+// Add other contractions as needed
+)
+
+// Split the input sentence into words
+val words = input.split(" ")
+
+// Process each word, checking if it's a contraction and replacing it
+val processedWords = words.map { word ->
+val cleanedWord = word.toLowerCase().replace(Regex("[^a-zA-Z']"), "") // Clean the word (remove punctuation)
+contractionsMap.getOrElse(cleanedWord) { word } // Replace contraction or keep the word
+}
+
+// Join the processed words back into a sentence
+return processedWords.joinToString(" ")
+}
+
+
+// save any data to mobile local storage app
+
+fun saveTextData(context: Context, question: String, answer: String) {
+val file = File(context.filesDir, "saved_data1.txt")
+	 
+try {
+// Load existing data
+val existingData = if (file.exists()) {
+val inputStream = FileInputStream(file)
+val content = inputStream.bufferedReader().use { it.readText() }
+inputStream.close()
+JSONArray(content)
+} else {
+JSONArray()
+}
+
+// Save the full text as a single object (you'll handle parsing later)
+val qaObject = JSONObject().apply {
+put("question", question)
+put("answer", answer)
+}
+
+// Append and save
+existingData.put(qaObject)
+
+val fos = FileOutputStream(file, false)
+fos.write(existingData.toString(4).toByteArray())
+fos.close()
+
+} catch (e: Exception) {
+	println("Error on insert data")
+}
+tts.speak("Your inserted data is $question $answer", TextToSpeech.QUEUE_FLUSH, null, null)
+
+}
+// retrieve the davedata
+
+
+fun readTextData(context: Context): String {
+return try {
+// Specify the file location in the app's internal storage
+val file = File(context.filesDir, "saved_data1.txt")
+
+// Use readText() to read the entire content of the file as a string
+file.readText()  // This will return the content of the file as a string
+} catch (e: Exception) {
+// Print the exception's message or any other useful info
+println("Error reading file: ${e.message}")  // Using message to get error details
+"Error reading file"  // Return an error message if something goes wrong
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+}
+// Function to start voice recognition
+private fun startVoiceRecognition() {
+if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+Toast.makeText(this, "Speech Recognition is not available", Toast.LENGTH_SHORT).show()
+return
+}
+
+val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+putExtra(RecognizerIntent.EXTRA_PROMPT, "I am your peronal Voice Assistant ...")
+}
+
+startActivityForResult(intent, SPEECH_REQUEST_CODE)
+}
+
+// Handling speech recognition result
+override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+super.onActivityResult(requestCode, resultCode, data)
+if (requestCode == SPEECH_REQUEST_CODE && resultCode == RESULT_OK) {
+val results = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+val spokenText = results?.get(0) ?: "No voice deteted"
+
+
+
+
+
+
+
+
+/// gemini ai through api 
+fun callGeminiFlash(prompt: String, callback: (String) -> Unit) {
+Thread {
+try {
+val apiKey = "AIzaSyACmk1CUecfzJ4HyPhywkwi3XugTYQgaTQ"  // Replace with your API key
+val url = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$apiKey")
+val connection = url.openConnection() as HttpURLConnection
+
+connection.requestMethod = "POST"
+connection.setRequestProperty("Content-Type", "application/json")
+connection.doOutput = true
+
+// JSON payload setup
+val requestBody = JSONObject().apply {
+put("contents", JSONArray().apply {
+put(JSONObject().apply {
+put("parts", JSONArray().apply {
+put(JSONObject().apply {
+put("text", " follow $rules ${prompt}")
+        
+})
+})
+})
+})
+}
+
+// Send data to the server
+BufferedWriter(OutputStreamWriter(connection.outputStream)).use { writer ->
+writer.write(requestBody.toString())
+writer.flush()
+}
+
+// Read the response from the server
+val responseCode = connection.responseCode
+val response = if (responseCode == HttpURLConnection.HTTP_OK) {
+BufferedReader(InputStreamReader(connection.inputStream)).use { reader ->
+val responseText = reader.readText()
+val json = JSONObject(responseText)
+val candidates = json.getJSONArray("candidates")
+val content = candidates.getJSONObject(0).getJSONObject("content")
+val parts = content.getJSONArray("parts")
+parts.getJSONObject(0).getString("text")
+}
+} else {
+"HTTP Error: $responseCode"
+}
+
+// Pass response back via the callback
+callback(response)
+
+} catch (e: Exception) {
+// Handle errors
+callback("Exception: ${e.message}")
+}
+}.start()
+}
+
+fun openAppByCommand(command: String, context: Context) {
+val lowerCommand = command.lowercase().trim()
+
+if (!lowerCommand.startsWith("open ")) {
+tts.speak("Can you explain what  you mean by open?", TextToSpeech.QUEUE_FLUSH, null, null)
+return
+}
+
+val appToOpen = lowerCommand.removePrefix("open ").trim()
+
+val packageManager = context.packageManager
+val apps = packageManager.getInstalledApplications(0)
+
+for (app in apps) {
+val label = packageManager.getApplicationLabel(app).toString().lowercase()
+val packageName = app.packageName.lowercase()
+
+if (label.contains(appToOpen) || packageName.contains(appToOpen)) {
+val launchIntent = packageManager.getLaunchIntentForPackage(app.packageName)
+if (launchIntent != null) {
+context.startActivity(launchIntent)
+return
+}
+}
+}
+
+tts.speak("App \"$appToOpen\" not found.", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+fun clearSavedData(context: Context) {
+    val fileName = "saved_data1.txt"
+
+    // Clear the file content in the background
+    Thread {
+        context.openFileOutput(fileName, Context.MODE_PRIVATE).use {
+            it.write("".toByteArray()) // Clear the file
+        }
+
+        // Run UI-related code on the UI thread
+        (context as Activity).runOnUiThread {
+            tts.speak("All saved data has been cleared", TextToSpeech.QUEUE_FLUSH, null, null)
+        }
+    }.start()
+}
+fun sendWhatsAppToContactName(context: Context, contactName: String, message: String) {
+val resolver = context.contentResolver
+val cursor = resolver.query(
+ContactsContract.Contacts.CONTENT_URI,
+null,
+"${ContactsContract.Contacts.DISPLAY_NAME} = ?",
+arrayOf(contactName),
+null
+)
+
+if (cursor != null && cursor.moveToFirst()) {
+val contactId = cursor.getString(cursor.getColumnIndexOrThrow(ContactsContract.Contacts._ID))
+val hasPhone = cursor.getInt(cursor.getColumnIndexOrThrow(ContactsContract.Contacts.HAS_PHONE_NUMBER))
+
+if (hasPhone > 0) {
+val phonesCursor = resolver.query(
+ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+null,
+"${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
+arrayOf(contactId),
+null
+)
+
+if (phonesCursor != null && phonesCursor.moveToFirst()) {
+val phoneNumber = phonesCursor.getString(
+phonesCursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.NUMBER)
+)
+
+// Format the phone number to remove spaces and special characters
+val formattedPhone = phoneNumber.replace("[^\\d]".toRegex(), "")
+val encodedMessage = Uri.encode(message)
+val url = "https://api.whatsapp.com/send?phone=$formattedPhone&text=$encodedMessage"
+
+val whatsappIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+whatsappIntent.setPackage("com.whatsapp")
+
+try {
+context.startActivity(whatsappIntent)
+} catch (e: Exception) {
+Toast.makeText(context, "WhatsApp not installed or error: ${e.message}", Toast.LENGTH_SHORT).show()
+}
+}
+phonesCursor?.close()
+}
+}
+cursor?.close()
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if(spokenText.contains("'")){
+	var spokenText = convertContractions(spokenText)
+	tts.speak(spokenText, TextToSpeech.QUEUE_FLUSH, null, null)			
+}
+// logic to trigger this if comma appear or not mean contaction form 
+if(1==1) {
+	// Assuming 'tts' is your TextToSpeech instance
+tts.stop();
+
+	// If speech contains "time", speak the time
+if (spokenText.contains("time", ignoreCase = true)) {
+tellTime()
+}
+else if (spokenText.contains("how are you", ignoreCase = true)) { 
+	tts.speak("Fine! how may i help you", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+else if (spokenText.contains("What is your name", ignoreCase = true)) { 
+	tts.speak("Myself Kora ,May i know your name  ", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+
+else if (spokenText.contains("Send whatsapp", ignoreCase = true)) { 
+	
+       try {
+	   sendWhatsAppToContactName(this, "Fatima", "Hi Fatima, it's Usman!")
+	   } catch (e: Exception) {
+		   val resultTextView = findViewById<TextView>(R.id.resultTextView)
+		   resultTextView.text = e.message
+	   tts.speak("Failed to send WhatsApp message. Error: ${e.message}", TextToSpeech.QUEUE_FLUSH, null, null)
+	   }
+	}
+else if (spokenText.contains("open", ignoreCase = true)) { 
+	
+	//usinf thread for execute the function first 
+	Thread {
+	openAppByCommand(spokenText, this)
+	
+	// You must update UI from the main thread, like speaking text
+	runOnUiThread {
+	tts.speak("App opened", TextToSpeech.QUEUE_FLUSH, null, null)
+	}
+	}.start()
+	
+	tts.speak("Working on your request", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+
+else if (spokenText.contains("Save this", ignoreCase = true)) {
+
+var question = ""
+var answer = ""
+
+// Step 1: Get the question
+callGeminiFlash("Plz separate the accurate question from this $spokenText") { questionResponse ->
+question = questionResponse
+
+runOnUiThread {
+tts.speak("Question got", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+
+// Step 2: Get the answer (inside the first callback to ensure order)
+callGeminiFlash("Plz separate the accurate answer from this $spokenText") { answerResponse ->
+answer = answerResponse
+
+runOnUiThread {
+tts.speak("Answer got", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+
+// Step 3: Save to database (only after question and answer are both ready)
+Thread {
+saveTextData(this, question, answer)
+
+runOnUiThread {
+tts.speak("Command inserted", TextToSpeech.QUEUE_FLUSH, null, null)
+}
+}.start()
+}
+}
+}
+
+else if (spokenText.contains("send ", ignoreCase = true)) { 
+	var sender = ""
+	var receiver = ""
+	//using thread for execute the function first
+	Thread {
+	callGeminiFlash("Give me accurate and full receiver name only from this $spokenText") { response: String ->
+		var sender = response
+	
+	// Speak the response using TTS (must be done on UI thread)
+	runOnUiThread {
+	tts.speak("", TextToSpeech.QUEUE_FLUSH, null, null)
+	}
+	}
+	}.start()
+	
+	//using thread for execute the function first
+	Thread {
+	callGeminiFlash("Give me accurate and full message only from this $spokenText") { response: String ->
+		var receiver = response
+		// Call this inside an Activity (like in onCreate)
+	//	var contactList: String = getWtContacts(this)
+	
+	// Speak the response using TTS (must be done on UI thread)
+	runOnUiThread {
+//	tts.speak(contactList, TextToSpeech.QUEUE_FLUSH, null, null)
+	}
+	}
+	}.start()
+	
+} 
+else if (spokenText.contains("Clear the data", ignoreCase = true)) {
+	// You are in another function, might be a background thread
+	
+	// Make sure you're on the UI thread to handle TTS
+	runOnUiThread {
+	clearSavedData(this)
+	}
+	}	
+else if (spokenText.contains("get the data", ignoreCase = true)) { 
+	
+	
+	val getData = readTextData(this)
+	/*
+	val textVie= findViewById<TextView>(statusTextView)
+	textvie.text = getData*/
+	tts.speak(getData, TextToSpeech.QUEUE_FLUSH, null, null)
+}
+else if (!spokenText.isNullOrEmpty()) {
+callGeminiFlash(spokenText) { response: String ->
+tts.speak(response, TextToSpeech.QUEUE_FLUSH, null, null)
+}
+}
+
+
+
+else{
+     tts.speak("For your request, command is not available", TextToSpeech.QUEUE_FLUSH, null, null)	
+}
+startVoiceRecognition()
+}
+
+}
+}
+}
